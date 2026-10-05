@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Who's That Pirate?</title>
+<link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#3b2410;--parch:#f1dfb0;--parch2:#dcc088;--gold:#c9962b;--sea:#06182e;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--sea:#04101f}}
+:root[data-theme="dark"]{--sea:#04101f}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--sea);font-family:Inter,system-ui,sans-serif;color:var(--ink);overflow:hidden}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ui{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;align-items:center;padding:12px;gap:10px;overflow-y:auto}
+h1{font-family:'Pirata One',serif;font-weight:400;font-size:clamp(28px,6vw,52px);margin:0;color:#ffe9a8;text-shadow:0 3px 0 #5a2d0c,0 0 24px #ff9d2e}
+h1 span{display:inline-block;animation:bob 2.4s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-5px) rotate(-6deg)}}
+.panel{width:min(560px,100%);background:linear-gradient(135deg,var(--parch),var(--parch2));border:5px double var(--gold);border-radius:14px;padding:18px;box-shadow:0 10px 40px #0008,inset 0 0 40px #8a5a1a55;position:relative}
+.panel::after{content:"☠";position:absolute;right:12px;bottom:4px;font-size:60px;opacity:.07}
+#q{font-family:'Pirata One',serif;font-size:clamp(22px,5vw,32px);text-align:center;margin:6px 0 14px;min-height:80px;display:flex;align-items:center;justify-content:center}
+.row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+button{font-family:'Pirata One',serif;font-size:24px;border:3px solid #5a2d0c;border-radius:12px;padding:10px 30px;cursor:pointer;color:#fff;transition:transform .15s}
+button:hover{transform:translateY(-3px) scale(1.05)}button:active{transform:scale(.95)}
+#yes{background:#2e8b57}#no{background:#b3262d}.sm{font-size:16px;padding:6px 16px;background:#5a2d0c}
+#stats{display:flex;justify-content:space-between;font-size:14px;font-weight:600;margin-bottom:6px}
+#bar{height:10px;background:#0003;border-radius:6px;overflow:hidden}#fill{height:100%;width:100%;background:linear-gradient(90deg,#c9962b,#e63946);transition:width .5s}
+#modes{display:flex;gap:8px;margin-bottom:10px;justify-content:center}.on{outline:3px solid var(--gold)}
+#chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:8px}
+#chips button{font:600 12px Inter;padding:6px 10px;background:#7a4a1a}
+#log{font-size:13px;max-height:90px;overflow:auto}select{font:inherit;padding:6px;max-width:100%}
+#yo{position:fixed;inset:0;z-index:3;display:none;align-items:flex-start;justify-content:center;padding-top:8vh;pointer-events:none;font-family:'Pirata One';font-size:clamp(40px,12vw,100px);color:#ffe9a8;text-shadow:0 4px 0 #5a2d0c,0 0 40px gold;text-align:center}
+#yo small{display:block;font-size:.35em}
+.hide{display:none!important}
+</style></head><body>
+<canvas id="gl"></canvas><div id="yo"></div>
+<div id="ui">
+<h1><span>☠</span> WHO'S THAT PIRATE?</h1>
+<div class="panel">
+ <div id="modes"><button class="sm on" id="mA">I'll guess yours</button><button class="sm" id="mB">You guess mine</button></div>
+ <div id="stats"><span id="cnt">Question 1</span><span id="conf"></span></div><div id="bar"><div id="fill"></div></div>
+ <div id="A"><div id="q"></div>
+  <div class="row" id="yn"><button id="yes">YES</button><button id="no">NO</button></div></div>
+ <div id="B" class="hide"><div id="chips"></div>
+  <div class="row"><select id="sel"></select><button class="sm" id="gb">Guess!</button></div><div id="log"></div></div>
+ <div class="row" style="margin-top:12px"><button class="sm" id="undo">Undo</button><button class="sm" id="re">Restart</button></div>
+</div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+/* ---------- DATA: name|gender|species|affiliation|fruit(-,p,z,l)|role|haki(o,a,c)|bounty(M)|debut arc idx ----------
+   arcs: 0 East Blue,1 Alabasta/Skypiea,2 Water7-Thriller Bark,3 Marineford,4 Dressrosa-WholeCake,5 Wano,6 Egghead */
+const RAW=`Monkey D. Luffy|m|human|Straw Hats|p|pirate|oac|3000|0
+Roronoa Zoro|m|human|Straw Hats|-|pirate|oac|1111|0
+Nami|f|human|Straw Hats|-|pirate||366|0
+Usopp|m|human|Straw Hats|-|pirate|o|500|0
+Sanji|m|human|Straw Hats|-|pirate|oa|1032|0
+Tony Tony Chopper|m|animal|Straw Hats|z|pirate||1000|1
+Nico Robin|f|human|Straw Hats|p|pirate||930|1
+Franky|m|cyborg|Straw Hats|-|pirate||394|2
+Brook|m|other|Straw Hats|p|pirate||383|2
+Jinbe|m|fishman|Straw Hats|-|pirate|oa|1100|3
+Shanks|m|human|Red Hair|-|yonko|oac|4048|0
+Kaido|m|human|Beasts|z|yonko|oac|4611|3
+Charlotte Linlin|f|human|Big Mom|p|yonko|oac|4388|3
+Marshall D. Teach|m|human|Blackbeard|p|yonko|oac|3996|1
+Edward Newgate|m|human|Whitebeard|p|yonko|oac|5046|3
+Sakazuki (Akainu)|m|human|Marines|l|marine|oa|0|3
+Kuzan (Aokiji)|m|human|Marines|l|marine|oa|0|3
+Borsalino (Kizaru)|m|human|Marines|l|marine|oa|0|3
+Issho (Fujitora)|m|human|Marines|p|marine|oac|0|4
+Monkey D. Garp|m|human|Marines|-|marine|oac|0|0
+Sengoku|m|human|Marines|z|marine|oa|0|3
+Smoker|m|human|Marines|l|marine|a|0|0
+Koby|m|human|Marines|-|marine|o|0|0
+Tashigi|f|human|Marines|-|marine||0|0
+Sir Crocodile|m|human|Cross Guild|l|warlord|a|1965|1
+Donquixote Doflamingo|m|human|Donquixote|p|warlord|oac|340|4
+Dracule Mihawk|m|human|Cross Guild|-|warlord|a|3590|0
+Boa Hancock|f|human|Kuja|p|warlord|oac|1659|3
+Trafalgar Law|m|human|Heart Pirates|p|pirate|oa|3000|3
+Sabo|m|human|Revolutionaries|l|rev|oac|602|4
+Monkey D. Dragon|m|human|Revolutionaries|-|rev|oac|0|0
+Portgas D. Ace|m|human|Whitebeard Pirates|l|pirate|a|550|3
+Silvers Rayleigh|m|human|Roger Pirates|-|pirate|oac|0|3
+Gol D. Roger|m|human|Roger Pirates|-|pirate|oac|5564|3
+Buggy|m|human|Buggy's Delivery|p|pirate||3189|0
+Arlong|m|fishman|Arlong Pirates|-|pirate||20|0
+Eustass Kid|m|human|Kid Pirates|p|pirate|a|3000|3
+Bartolomeo|m|human|Barto Club|p|pirate||600|4
+Charlotte Katakuri|m|human|Big Mom|p|pirate|oa|1057|4
+Perona|f|human|Thriller Bark|p|pirate||0|2
+Enel|m|human|Skypiea|l|pirate|o|0|1
+Rob Lucci|m|human|CP0|z|agent|oa|0|2
+Nefertari Vivi|f|human|Alabasta|-|civilian||0|1
+Carrot|f|mink|Mink Tribe|z|pirate||0|4
+Yamato|f|other|Beasts Pirates|z|pirate|oac|0|5
+Kozuki Momonosuke|m|human|Wano|z|civilian||0|5
+Kozuki Oden|m|human|Wano|-|pirate|oac|0|5
+Vegapunk|m|human|Marines|p|civilian||0|6
+Jewelry Bonney|f|human|Bonney Pirates|p|pirate||320|3
+Emporio Ivankov|m|human|Revolutionaries|p|rev||0|3`;
+const CH=RAW.split('\n').map(r=>{const[n,g,s,a,d,ro,h,b,ar]=r.split('|');return{n,g,s,a,d,ro,h,b:+b,ar:+ar}});
+const COL=['#e63946','#2a9d8f','#f4a261','#8d99ae','#e9c46a','#9b5de5','#00b4d8'];
+/* ---------- QUESTIONS ---------- */
+const Q=[
+['Are you male?',c=>c.g=='m'],['Are you human?',c=>c.s=='human'],['Are you a Straw Hat?',c=>c.a=='Straw Hats'],
+['Do you have a Devil Fruit?',c=>c.d!='-'],['Is your fruit a Logia?',c=>c.d=='l'],['Is your fruit a Zoan?',c=>c.d=='z'],
+['Are you a pirate (or Yonko)?',c=>c.ro=='pirate'||c.ro=='yonko'],['Are you a Marine?',c=>c.ro=='marine'],
+['Are you a Yonko?',c=>c.ro=='yonko'],['Are you a Warlord?',c=>c.ro=='warlord'],['Are you a Revolutionary?',c=>c.ro=='rev'],
+['Can you use Conqueror\'s Haki?',c=>c.h.includes('c')],['Can you use Armament Haki?',c=>c.h.includes('a')],
+['Do you have any Haki?',c=>c.h!=''],['Is your bounty over 1 billion?',c=>c.b>1000],['Do you have a bounty?',c=>c.b>0],
+['Were you introduced in East Blue?',c=>c.ar==0],['Did you debut before Marineford?',c=>c.ar<3],['Are you seen in the Wano arc?',c=>c.ar>=5||c.a=='Beasts Pirates'||c.a=='Straw Hats'],
+['Are you non-human?',c=>c.s!='human'],['Are you part of a big crew with a Yonko?',c=>/Big Mom|Beasts|Red Hair|Blackbeard|Whitebeard/.test(c.a)]
+];
+/* ---------- ENTROPY ENGINE ----------
+   With a uniform prior, H(pool)=log2(n). For a question splitting the pool into
+   A (true) and B (false):  IG = H(pool) - (|A|/n)H(A) - (|B|/n)H(B)
+   Since H(A)=log2|A| and H(B)=log2|B|, IG equals the binary entropy of |A|/n,
+   which peaks (1 bit) at a 50/50 split. We pick the unasked question with max IG. */
+const H=n=>n>0?Math.log2(n):0;
+function IG(pool,f){const n=pool.length,a=pool.filter(f).length,b=n-a;return(a==0||b==0)?0:H(n)-(a/n)*H(a)-(b/n)*H(b)}
+function best(pool,asked){let bi=-1,bv=0;Q.forEach((q,i)=>{if(asked.has(i))return;const v=IG(pool,q[1]);if(v>bv){bv=v;bi=i}});return bi}
+/* ---------- AUDIO ---------- */
+let AC;const tone=(f,d=.15,t='triangle',v=.06,at=0)=>{try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.type=t;o.frequency.value=f;g.gain.setValueAtTime(v,AC.currentTime+at);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+at+d);o.connect(g).connect(AC.destination);o.start(AC.currentTime+at);o.stop(AC.currentTime+at+d)}catch(e){}};
+const sfx={yes:()=>{tone(880,.12);tone(1320,.2,'sine',.05,.08)},no:()=>tone(160,.25,'sawtooth',.05),page:()=>tone(300,.08,'square',.02),win:()=>[392,523,659,784].forEach((f,i)=>tone(f,.4,'sawtooth',.05,i*.15))};
+/* ---------- 3D SCENE ---------- */
+const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+let R,S,Cam,wave,pts,card,burst,ship,mx=0,my=0,shake=0,t0=0,GLok=true;
+try{
+ const cv=document.getElementById('gl');R=new THREE.WebGLRenderer({canvas:cv,antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));
+ S=new THREE.Scene();S.fog=new THREE.FogExp2(0x2a3b66,.006);Cam=new THREE.PerspectiveCamera(60,1,.1,600);Cam.position.set(0,6,30);
+ const sky=new THREE.Mesh(new THREE.SphereGeometry(400,16,16),new THREE.ShaderMaterial({side:THREE.BackSide,fog:false,vertexShader:'varying vec3 p;void main(){p=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'varying vec3 p;void main(){float h=clamp(normalize(p).y*1.6+.1,0.,1.);gl_FragColor=vec4(mix(vec3(1.,.55,.2),vec3(.03,.1,.3),pow(h,.6)),1.);}'}));S.add(sky);
+ wave={time:{value:0}};
+ const oc=new THREE.Mesh(new THREE.PlaneGeometry(500,500,120,120),new THREE.ShaderMaterial({uniforms:wave,fog:true,
+  vertexShader:`uniform float time;varying float h;
+  vec3 g(vec2 d,float k,float s,vec3 p){float f=sqrt(9.8*k)*0.0+k*(dot(d,p.xy)-s*time);return vec3(d.x*(.4/k)*cos(f)*.3,d.y*(.4/k)*cos(f)*.3,(.5/k*k)*sin(f));}
+  void main(){vec3 p=position;vec3 o=g(normalize(vec2(1,1)),.25,1.3,p)+g(normalize(vec2(1,-.6)),.4,1.7,p)+g(normalize(vec2(-.3,1)),.7,2.1,p)*.5;p+=o;h=o.z;gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);}`,
+  fragmentShader:'varying float h;void main(){vec3 c=mix(vec3(.02,.12,.28),vec3(.95,.5,.25),smoothstep(.2,1.4,h));gl_FragColor=vec4(c,1.);}'}));
+ oc.rotation.x=-Math.PI/2;oc.position.y=-3;S.add(oc);
+ for(let i=0;i<7;i++){const m=new THREE.Mesh(new THREE.ConeGeometry(4+Math.random()*5,5+Math.random()*6,6),new THREE.MeshBasicMaterial({color:0x1d2b4a}));m.position.set(-120+i*40+Math.random()*10,-1,-90-Math.random()*60);S.add(m)}
+ ship=new THREE.Group();const dk=new THREE.MeshBasicMaterial({color:0x0b1426});
+ const hull=new THREE.Mesh(new THREE.BoxGeometry(10,2,3),dk),mast=new THREE.Mesh(new THREE.CylinderGeometry(.15,.15,10),dk),sail=new THREE.Mesh(new THREE.PlaneGeometry(5,6),new THREE.MeshBasicMaterial({color:0x0b1426,side:2}));
+ mast.position.y=6;sail.position.set(0,6.5,.2);ship.add(hull,mast,sail);ship.position.set(-30,-1.5,-45);S.add(ship);
+ const N=400,pg=new THREE.BufferGeometry(),pa=new Float32Array(N*3);for(let i=0;i<N;i++){pa[i*3]=(Math.random()-.5)*120;pa[i*3+1]=Math.random()*30-2;pa[i*3+2]=(Math.random()-.5)*80-10}
+ pg.setAttribute('position',new THREE.BufferAttribute(pa,3));pts=new THREE.Points(pg,new THREE.PointsMaterial({color:0xffb04a,size:.35,transparent:true,opacity:.8}));S.add(pts);
+ addEventListener('mousemove',e=>{mx=e.clientX/innerWidth-.5;my=e.clientY/innerHeight-.5});
+ const rs=()=>{R.setSize(innerWidth,innerHeight,false);Cam.aspect=innerWidth/innerHeight;Cam.updateProjectionMatrix()};addEventListener('resize',rs);rs();
+ const loop=t=>{requestAnimationFrame(loop);t/=1000;wave.time.value=t;if(!reduce){ship.position.x=-30+((t*1.2)%80);ship.position.y=-1.5+Math.sin(t*1.5)*.4;ship.rotation.z=Math.sin(t)*.05;
+  const p=pts.geometry.attributes.position;for(let i=0;i<N;i++){p.array[i*3+1]+=.02;if(p.array[i*3+1]>28)p.array[i*3+1]=-2}p.needsUpdate=true}
+  Cam.position.x+=((reduce?0:mx*8)-Cam.position.x)*.03;Cam.position.y=6-(reduce?0:my*3)+Math.sin(t*.4)*.5;
+  if(shake>0){Cam.position.x+=(Math.random()-.5)*shake;Cam.position.y+=(Math.random()-.5)*shake;shake*=.9}
+  Cam.lookAt(0,4,0);if(card){card.rotation.y+=.02;card.position.y=6+Math.sin(t*2)*.3}
+  if(burst){const a=burst.geometry.attributes.position,v=burst.userData.v;for(let i=0;i<a.count;i++){a.array[i*3]+=v[i*3];a.array[i*3+1]+=v[i*3+1];a.array[i*3+2]+=v[i*3+2];v[i*3+1]-=.003}a.needsUpdate=true;burst.material.opacity*=.992}
+  R.render(S,Cam)};loop(0);
+}catch(e){GLok=false;document.getElementById('gl').style.background='linear-gradient(#f4803a,#0b2a55)'}
+function reveal(c,col){
+ if(!GLok)return;clearReveal();const cv=document.createElement('canvas');cv.width=512;cv.height=700;const x=cv.getContext('2d');
+ x.fillStyle='#f1dfb0';x.fillRect(0,0,512,700);x.strokeStyle=col;x.lineWidth=18;x.strokeRect(14,14,484,672);x.fillStyle='#3b2410';x.textAlign='center';
+ x.font='56px "Pirata One",serif';x.fillText('WANTED',256,100);x.fillStyle=col;x.beginPath();x.arc(256,290,110,0,7);x.fill();x.font='120px serif';x.fillStyle='#fff';x.fillText('☠',256,330);
+ x.fillStyle='#3b2410';x.font='bold 34px "Pirata One",serif';wrap(x,c.n,256,480,440,40);x.font='30px "Pirata One",serif';x.fillText(c.b?'฿ '+c.b.toLocaleString()+',000,000':'Bounty: ???',256,620);
+ const tex=new THREE.CanvasTexture(cv);card=new THREE.Mesh(new THREE.PlaneGeometry(7,9.8),new THREE.MeshBasicMaterial({map:tex,side:2}));
+ const aura=new THREE.Mesh(new THREE.PlaneGeometry(10,13),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.3}));aura.position.z=-.1;card.add(aura);card.position.set(0,6,8);S.add(card);
+ gsap.from(card.scale,{x:.01,y:.01,duration:1.1,ease:'back.out(2)'});
+ const N=300,g=new THREE.BufferGeometry(),a=new Float32Array(N*3),v=new Float32Array(N*3);for(let i=0;i<N;i++){a.set([0,6,8],i*3);v.set([(Math.random()-.5)*.8,(Math.random()-.3)*.8,(Math.random()-.5)*.8],i*3)}
+ g.setAttribute('position',new THREE.BufferAttribute(a,3));burst=new THREE.Points(g,new THREE.PointsMaterial({color:0xffd24a,size:.4,transparent:true}));burst.userData.v=v;S.add(burst);
+}
+function wrap(x,t,cx,y,w,lh){let l='';t.split(' ').forEach(wd=>{if(x.measureText(l+wd).width>w){x.fillText(l,cx,y);y+=lh;l=''}l+=wd+' '});x.fillText(l,cx,y)}
+function clearReveal(){if(card){S.remove(card);card=null}if(burst){S.remove(burst);burst=null}}
+/* ---------- GAME ---------- */
+const $=id=>document.getElementById(id);let mode='A',pool,asked,hist,cur,secret,n=0;
+function qAnim(txt){const q=$('q');sfx.page();gsap.fromTo(q,{rotationX:-90,opacity:0,transformPerspective:600},{rotationX:0,opacity:1,duration:reduce?0:.5,ease:'power2.out'});q.textContent=txt}
+function start(){pool=CH.slice();asked=new Set();hist=[];n=0;clearReveal();$('yo').style.display='none';$('yn').classList.remove('hide');$('undo').classList.remove('hide');
+ secret=CH[Math.random()*CH.length|0];$('log').innerHTML='';$('sel').innerHTML=CH.map(c=>`<option>${c.n}</option>`).join('');next()}
+function status(){$('cnt').textContent='Question '+(n+1);$('fill').style.width=(pool.length/CH.length*100)+'%';$('conf').textContent=pool.length?`I'm ${Math.round(100/pool.length)}% sure · ${pool.length} left`:''}
+function next(){status();if(mode!='A')return;
+ if(pool.length==0)return end(null);if(pool.length==1)return end(pool[0]);
+ cur=best(pool,asked);if(cur<0)return end(pool[0],true);qAnim(Q[cur][0])}
+function end(c,guess){$('yn').classList.add('hide');if(!c){$('q').textContent="You stumped me! No pirate matches those answers.";shake=3;sfx.no();return}
+ $('q').textContent=(guess?'My best guess: ':'')+c.n+(guess?' — am I right?':'!');$('conf').textContent=guess?'':"I'm 100% sure";
+ sfx.win();reveal(c,COL[c.ar]);const y=$('yo');y.innerHTML='YOHOHOHO!<small>'+c.n+'</small>';y.style.display='flex';gsap.from(y,{scale:.2,opacity:0,duration:.8,ease:'elastic.out(1,.5)'});
+ setTimeout(()=>y.style.display='none',3200);if(!reduce)confetti()}
+function answer(yes){if(cur==null||pool.length<2)return;sfx[yes?'yes':'no']();hist.push({pool,cur,asked:new Set(asked)});asked.add(cur);
+ const f=Q[cur][1];pool=pool.filter(c=>f(c)==yes);n++;if(!pool.length)shake=3;next()}
+function undo(){if(!hist.length)return;const h=hist.pop();pool=h.pool;asked=h.asked;n--;clearReveal();$('yo').style.display='none';$('yn').classList.remove('hide');next()}
+$('yes').onclick=()=>answer(true);$('no').onclick=()=>answer(false);$('undo').onclick=undo;$('re').onclick=start;
+function setMode(m){mode=m;$('mA').classList.toggle('on',m=='A');$('mB').classList.toggle('on',m=='B');$('A').classList.toggle('hide',m=='B');$('B').classList.toggle('hide',m=='A');$('undo').classList.toggle('hide',m=='B');start();
+ if(m=='B'){$('chips').innerHTML='';Q.forEach((q,i)=>{const b=document.createElement('button');b.textContent=q[0].replace(/^Are you |^Do you |^Is your |^Were you |^Can you |\?$/g,'').trim();b.onclick=()=>{const r=q[1](secret);sfx[r?'yes':'no']();$('log').insertAdjacentHTML('afterbegin',`<div>${q[0].replace('you','they').replace('Are they','Is it')} → <b>${r?'YES':'NO'}</b></div>`);n++;$('cnt').textContent='Question '+(n+1);b.disabled=true;b.style.opacity=.4};$('chips').appendChild(b)});$('cnt').textContent='Question 1';$('conf').textContent='I picked a pirate!'}}
+$('mA').onclick=()=>setMode('A');$('mB').onclick=()=>setMode('B');
+$('gb').onclick=()=>{if($('sel').value==secret.n){$('yn').classList.add('hide');reveal(secret,COL[secret.ar]);sfx.win();$('log').insertAdjacentHTML('afterbegin','<div><b>YOHOHOHO! Correct — '+secret.n+'!</b></div>');if(!reduce)confetti()}else{sfx.no();shake=3;$('log').insertAdjacentHTML('afterbegin','<div>Wrong guess! Try again.</div>');document.body.animate([{transform:'translateX(-8px)'},{transform:'translateX(8px)'},{transform:'none'}],200)}};
+function confetti(){for(let i=0;i<60;i++){const d=document.createElement('div');d.style.cssText=`position:fixed;z-index:4;pointer-events:none;width:8px;height:12px;left:50%;top:30%;background:${COL[i%7]}`;document.body.appendChild(d);
+ gsap.to(d,{x:(Math.random()-.5)*innerWidth,y:innerHeight*.6+Math.random()*200,rotation:Math.random()*720,opacity:0,duration:2+Math.random(),ease:'power2.out',onComplete:()=>d.remove()})}}
+start();
+</script></body></html>
